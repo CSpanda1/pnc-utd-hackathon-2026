@@ -1,0 +1,5 @@
+# Core workshop code uses only the standard library.
+# Optional, for Level 3 graph orchestration and UI:
+langgraph>=0.2
+streamlit>=1.30
+pytest
