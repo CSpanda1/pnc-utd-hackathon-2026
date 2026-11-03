@@ -49,11 +49,14 @@ apr=c.number_input('APR (%)',0.0,40.0,8.0,step=.5)
 term=st.slider('Loan term (months)',12,84,60,12)
 scenario=simulate_purchase(cid,price,down,apr,term)
 st.json(scenario)
-provider=st.selectbox('Narration provider',['none','huggingface','openai','ollama'])
+provider=st.selectbox('Narration provider',['none','huggingface','foundry','openai','ollama'])
 if provider=='huggingface':
     import os
     from local_hf import DEFAULT_MODEL
     st.caption(f"Local cached model: {os.getenv('HF_MODEL', DEFAULT_MODEL)}. First request loads the weights.")
+if provider=='foundry':
+    import os
+    st.caption(f"Foundry Local model: {os.getenv('FOUNDRY_MODEL','qwen2.5-0.5b')} via {os.getenv('FOUNDRY_BASE_URL','http://127.0.0.1:51333/v1')}.")
 if st.button('Explain my synthetic financial picture'):
     try:st.write(narrate({'indicators':ind,'scenario':scenario,'transaction_history':get_history_evidence(cid)},provider))
     except Exception as e:st.error(f'Provider unavailable: {type(e).__name__}: {e}')

@@ -113,6 +113,28 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(provider, 'none')
         self.assertEqual(len(evidence['transaction_history']['recent_months']), 3)
 
+    def test_foundry_provider_is_allowed(self):
+        app = create_app(Settings(Path(self.temp.name) / 'foundry.sqlite3', llm_provider='foundry'))
+        with TestClient(app, headers=HEADERS) as client:
+            response = client.post('/auth/register', json={'email': 'foundry@example.com', 'password': PASSWORD})
+            self.assertEqual(response.status_code, 201)
+            with patch('backend.main.narrate', return_value='Foundry explanation') as narrate:
+                response = client.post('/narration', json={})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['provider'], 'foundry')
+            self.assertEqual(narrate.call_args.args[1], 'foundry')
+
+    def test_openai_provider_is_allowed(self):
+        app = create_app(Settings(Path(self.temp.name) / 'openai.sqlite3', llm_provider='openai'))
+        with TestClient(app, headers=HEADERS) as client:
+            response = client.post('/auth/register', json={'email': 'openai@example.com', 'password': PASSWORD})
+            self.assertEqual(response.status_code, 201)
+            with patch('backend.main.narrate', return_value='OpenAI explanation') as narrate:
+                response = client.post('/narration', json={})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['provider'], 'openai')
+            self.assertEqual(narrate.call_args.args[1], 'openai')
+
     def test_transaction_filters_and_customer_scope(self):
         self.register()
         account = 'A-C001-CHECKING'

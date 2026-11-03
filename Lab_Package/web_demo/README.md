@@ -5,7 +5,7 @@ A second front end for the financial wellness lab: registration, sign-in/out, a 
 ```text
 Browser → Next.js /api/* route handler → FastAPI → SQLite identity/session store
                                              → financial_tools.py → synthetic CSVs
-                                             → llm_demo.py → cached Hugging Face model
+                                             → llm_demo.py → Hugging Face or Foundry Local model
 ```
 
 The backend assigns the next available synthetic profile at registration, up to 30 users. A user cannot select a customer ID. All financial endpoints derive that ID from the authenticated session. Registrations persist across restarts.
@@ -84,7 +84,7 @@ export LLM_PROVIDER=huggingface
 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-If inference dependencies are missing, see `../requirements-hf.txt` and the parent README. The first explanation loads cached weights; the API allows one narration at a time, and the Next.js proxy waits up to five minutes. A timed-out browser request does not cancel a running GPU computation. Keep **one API worker** to avoid duplicated GPU models. `LLM_PROVIDER=none` is the default and returns evidence without requiring a model. The browser cannot select providers or send its own evidence.
+If inference dependencies are missing, see `../requirements-hf.txt` and the parent README. The first explanation loads cached weights; the API allows one narration at a time, and the Next.js proxy waits up to five minutes. A timed-out browser request does not cancel a running GPU computation. Keep **one API worker** to avoid duplicated GPU models. `LLM_PROVIDER=none` is the default and returns evidence without requiring a model. You can set `LLM_PROVIDER=huggingface`, `LLM_PROVIDER=foundry`, or `LLM_PROVIDER=openai` on the backend process only; the browser cannot choose providers or send its own evidence.
 
 ## API contract and security walkthrough
 
@@ -157,7 +157,12 @@ The API tests use temporary databases and mocked narration. They cover missing/e
 | FastAPI | `FRONTEND_ORIGIN` | `http://localhost:3000` |
 | FastAPI | `COOKIE_SECURE` | `0`, permitted only for localhost development |
 | FastAPI | `DATABASE_PATH` | `backend/state/workshop.sqlite3` |
-| FastAPI | `LLM_PROVIDER` | `none`; optionally `huggingface` |
+| FastAPI | `LLM_PROVIDER` | `none`; optionally `huggingface`, `foundry`, or `openai` |
+| FastAPI | `FOUNDRY_BASE_URL` | `http://127.0.0.1:5273/v1` |
+| FastAPI | `FOUNDRY_MODEL` | `qwen2.5-0.5b` |
+| FastAPI | `FOUNDRY_API_KEY` | Optional; defaults to `foundry-local` |
+| FastAPI | `OPENAI_API_KEY` | Required when `LLM_PROVIDER=openai` |
+| FastAPI | `OPENAI_MODEL` | `gpt-5.4` (override to `gpt-4o` / `gpt-4.1` as needed) |
 
 For an HTTPS demonstration set both origin settings to the same exact HTTPS origin and `COOKIE_SECURE=1`. Keep FastAPI private to the Next.js server; use TLS for any network hop that leaves the machine. Place a request-size/rate-limiting reverse proxy in front of the API for nonlocal hosting. This example's UI uses a teaching CSP with inline scripts permitted; a deployed app should use a nonce-based CSP.
 

@@ -25,6 +25,31 @@ class LocalModelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             narrate({}, 'typo')
 
+    def test_foundry_provider_uses_openai_compatible_client(self):
+        evidence = build_evidence()
+        fake_response = SimpleNamespace(output_text='foundry answer')
+        fake_client = MagicMock()
+        fake_client.responses.create.return_value = fake_response
+        with patch.dict(sys.modules, {'openai': SimpleNamespace(OpenAI=MagicMock(return_value=fake_client))}):
+            with patch.dict(os.environ, {'FOUNDRY_BASE_URL': 'http://127.0.0.1:39839/v1', 'FOUNDRY_MODEL': 'qwen2.5-0.5b'}):
+                self.assertEqual(narrate(evidence, 'foundry'), 'foundry answer')
+        fake_client.responses.create.assert_called_once()
+
+    def test_foundry_falls_back_to_chat_completions_when_responses_missing(self):
+        evidence = build_evidence()
+
+        class MissingResponses(Exception):
+            status_code = 404
+
+        completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='fallback answer'))])
+        fake_client = MagicMock()
+        fake_client.responses.create.side_effect = MissingResponses()
+        fake_client.chat.completions.create.return_value = completion
+        with patch.dict(sys.modules, {'openai': SimpleNamespace(OpenAI=MagicMock(return_value=fake_client))}):
+            self.assertEqual(narrate(evidence, 'foundry'), 'fallback answer')
+        fake_client.responses.create.assert_called_once()
+        fake_client.chat.completions.create.assert_called_once()
+
     def test_local_only_architecture_selection_and_reuse(self):
         for model_type, vision in [('qwen3_vl', True), ('qwen2_5_vl', True),
                                    ('qwen3_5', True), ('mistral', False)]:

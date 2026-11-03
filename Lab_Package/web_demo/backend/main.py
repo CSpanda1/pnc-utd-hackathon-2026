@@ -83,8 +83,8 @@ def digest(value):
 
 def create_app(settings=None):
     settings = settings or Settings.environment()
-    if settings.llm_provider not in {'none', 'huggingface'}:
-        raise ValueError('Web demo LLM_PROVIDER must be none or huggingface')
+    if settings.llm_provider not in {'none', 'huggingface', 'foundry', 'openai'}:
+        raise ValueError('Web demo LLM_PROVIDER must be none, huggingface, foundry, or openai')
     if settings.secure_cookie and not settings.frontend_origin.startswith('https://'):
         raise ValueError('Secure cookies require an HTTPS FRONTEND_ORIGIN')
     if not settings.secure_cookie and settings.frontend_origin not in {

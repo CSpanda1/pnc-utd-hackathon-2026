@@ -8,7 +8,7 @@
 3. Run `jupyter notebook` (or open the `.ipynb` with VS Code/JupyterLab). Install `notebook` separately if needed.
 4. Execute cells top to bottom from the extracted directory. Basic sections do **not** need API keys or LangGraph.
 5. Optional: `python -m pip install langgraph` for the graph. Restart kernel after installation.
-6. Optional local LLM: use the already downloaded Hugging Face models as described below. Set `ENABLE_HF=1` for the notebook or select `huggingface` in Streamlit. Ollama remains available through the standalone provider selector.
+6. Optional local LLM: use the already downloaded Hugging Face models as described below. Set `ENABLE_HF=1` for the notebook or select `huggingface` in Streamlit. Foundry Local (`foundry`) and Ollama are also available through the provider selector.
 7. Optional cloud LLM: set `OPENAI_API_KEY` and an available `OPENAI_MODEL`. For tool calling additionally set `RUN_OPENAI_TOOLS=1`. Costs apply.
 8. `python -m unittest test_financial_tools.py`; `streamlit run app.py` for standalone UI.
 
@@ -33,6 +33,24 @@ For the progressive notebook, select the same WSL environment as its kernel. `EN
 
 `local_hf.py` uses `local_files_only=True` for config, tokenizer, and weights, with remote code disabled. Missing or incomplete snapshots fail with an error instead of downloading weights. Loaded weights are reused between requests. Restart the process/kernel to release GPU memory or switch models cleanly.
 
+### Foundry Local provider (qwen2.5-0.5b)
+
+If Foundry Local is installed, you can use its OpenAI-compatible local endpoint from the same narration path:
+
+```bash
+foundry server start --port 5273 --idle-timeout 0
+foundry model run qwen2.5-0.5b
+set LLM_PROVIDER=foundry
+set FOUNDRY_BASE_URL=http://127.0.0.1:5273/v1
+set FOUNDRY_MODEL=qwen2.5-0.5b
+python llm_demo.py
+```
+
+Notes:
+- `LLM_PROVIDER=foundry` works in `llm_demo.py`, Streamlit (`app.py`), and `web_demo` backend narration.
+- `FOUNDRY_API_KEY` is optional for local use; default is `foundry-local`.
+- Use `foundry server status` to confirm the active local endpoint if you run a nondefault port.
+
 | Setting | Default / purpose |
 | --- | --- |
 | `HF_MODEL` | `Qwen/Qwen3-VL-2B-Instruct`; cached repo ID or absolute snapshot directory |
@@ -48,6 +66,19 @@ Run all lightweight checks with `python -m unittest discover -p 'test_*.py'`. Te
 ## Next.js + FastAPI alternative
 
 The [`web_demo`](web_demo/README.md) adds registration, sign-in/out, a Next.js dashboard, authenticated FastAPI endpoints, per-user synthetic profiles, vehicle simulation, and optional cached Hugging Face narration. Follow its two-terminal setup and security walkthrough to showcase a separate frontend/backend architecture alongside Streamlit.
+
+## LangGraph + OpenAI workshop inference example
+
+Use `langgraph_openai_workshop_demo.py` for a runnable graph-based example that routes a workshop question, calls deterministic finance tools, and asks OpenAI for a grounded narrative from evidence.
+
+```bash
+# Windows PowerShell:
+$env:OPENAI_API_KEY="sk-..."
+$env:OPENAI_MODEL="gpt-4o"
+python langgraph_openai_workshop_demo.py --customer-id C001 --question "If I buy a $30,000 car with $5,000 down, what changes?"
+```
+
+The script prints JSON including route trace, key computed values, and the final model answer. It demonstrates LangGraph orchestration for workshop inference while keeping all calculations in `financial_tools.py`.
 
 ## Exploratory data analysis notebook
 
@@ -137,6 +168,7 @@ A. Grounded conversational coach; B. at least six health indicators; C. vehicle 
 ## Reference docs
 - https://developers.openai.com/api/docs/guides/function-calling
 - https://docs.langchain.com/oss/python/langgraph/overview
+- https://learn.microsoft.com/azure/foundry-local/reference/reference-cli
 - https://docs.ollama.com/
 - https://docs.streamlit.io/
 - https://www.consumerfinance.gov/consumer-tools/educator-tool/financial-well-being-resources/
