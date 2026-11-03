@@ -3,4 +3,4 @@ streamlit>=1.50,<2
 requests>=2.31
 openai>=1.70
 # Optional workflow orchestration:
-# langgraph>=0.3
+langgraph>=0.3
