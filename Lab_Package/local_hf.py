@@ -6,7 +6,7 @@ DEFAULT_MODEL = 'Qwen/Qwen3-VL-2B-Instruct'
 
 
 @lru_cache(maxsize=1)
-def load_model(model_id, cache_dir, device, quantization):
+def load_model(model_id, cache_dir, device, quantization, local_files_only):
     """Keep weights loaded across notebook calls and Streamlit reruns."""
     try:
         import torch
@@ -23,7 +23,7 @@ def load_model(model_id, cache_dir, device, quantization):
     quantization = ('4bit' if device == 'cuda' else 'none') if quantization == 'auto' else quantization
     if quantization == '4bit' and device != 'cuda':
         raise ValueError('This lab uses 4-bit quantization on CUDA only; use HF_QUANTIZATION=none for CPU.')
-    local = dict(local_files_only=True, trust_remote_code=False)
+    local = dict(local_files_only=local_files_only, trust_remote_code=False)
     if cache_dir:
         local['cache_dir'] = cache_dir
     try:
@@ -54,9 +54,10 @@ def generate_local(prompt):
     max_tokens = int(os.getenv('HF_MAX_NEW_TOKENS', '384'))
     if not 1 <= max_tokens <= 2048:
         raise ValueError('HF_MAX_NEW_TOKENS must be between 1 and 2048')
+    local_files_only = os.getenv('HF_LOCAL_FILES_ONLY', 'true').strip().lower() not in {'0', 'false', 'no'}
     tokenizer, model = load_model(
         os.getenv('HF_MODEL', DEFAULT_MODEL), os.getenv('HF_HUB_CACHE') or None,
-        os.getenv('HF_DEVICE', 'auto'), os.getenv('HF_QUANTIZATION', 'auto'))
+        os.getenv('HF_DEVICE', 'auto'), os.getenv('HF_QUANTIZATION', 'auto'), local_files_only)
     import torch
     if not tokenizer.chat_template:
         raise ValueError('Choose an instruction/chat model with a chat template, such as the default Qwen model.')
