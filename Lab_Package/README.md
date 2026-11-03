@@ -71,6 +71,66 @@ Checking and savings include deposits/payroll, withdrawals, and payments; CDs/IR
 Run `python generate_history.py` to reproduce history using the existing snapshots. `python generate_data.py` regenerates both snapshots and history. Run `python -m unittest discover -p 'test_*.py'` to check all core functionality. Restart app processes and rerun notebook cells after regeneration.
 Assets in the dataset: checking, savings, CD, IRA. Liabilities: credit card, auto loan, personal loan, mortgage. Deposits and investment accounts are **not** all liquid. Liquidity includes checking and savings only. `net_worth_partial` is deliberately incomplete, because property values, other holdings and taxes are absent. The simplified loan simulator omits ownership costs. This dataset and teaching lab must not be used for underwriting, trading, investment advice or production decisions.
 
+## Data generator script documentation
+
+The package includes two deterministic generator scripts. If you meant `generate_date.py`, use `generate_data.py`.
+
+### `generate_data.py`
+
+Creates baseline synthetic snapshot files, then regenerates history by calling `generate_history(...)`.
+
+**What it writes**
+- `data/profiles.csv`
+- `data/accounts.csv`
+- `data/transactions.csv` and `data/monthly_statements.csv` (via `generate_history.py`)
+- `data/history_manifest.json` (via `generate_history.py`)
+
+**Generation behavior**
+- Uses fixed seed `20261107` for reproducibility.
+- Produces 30 customers (`C001`–`C030`).
+- Samples monthly income and non-debt expenses with bounded random ranges.
+- Always creates checking, savings, IRA, and credit-card rows.
+- May omit zero-balance CD / auto-loan / personal-loan / mortgage rows.
+- Uses simplified synthetic APR/payment assumptions for debt accounts.
+
+**Run**
+
+```bash
+python generate_data.py
+```
+
+### `generate_history.py`
+
+Builds deterministic, cent-exact monthly ledger history anchored to the current `profiles.csv` and `accounts.csv` closing balances.
+
+**What it validates**
+- Month count must be `1..120`.
+- `--end` must be a month-end date.
+- Each customer must have one row per account type and a checking account.
+- Running balances cannot go negative.
+- Final generated closing balance must match `accounts.csv` for every account.
+
+**What it writes**
+- Rewrites `data/accounts.csv` with added metadata:
+  - `account_id`, `opening_balance`, `history_start`, `as_of_date`, `annual_yield_pct`
+- `data/transactions.csv`
+- `data/monthly_statements.csv`
+- `data/history_manifest.json` (seed, date bounds, counts, schema metadata)
+
+**CLI usage**
+
+```bash
+python generate_history.py
+python generate_history.py --end 2026-10-31 --months 24
+```
+
+**Key modeling notes**
+- Uses fixed seed `20261108`.
+- Assets and liabilities are both stored as positive balances.
+- `balance_change` is signed change in the specific account.
+- Loan/card interest and fees are synthetic accrual events.
+- External cash-management transfers are synthetic calibration flows that preserve supplied ending balances.
+
 ## Suggested participant exercises
 A. Grounded conversational coach; B. at least six health indicators; C. vehicle or income-shock what-if; D. bounded function-call router. Test numeric fidelity and unknown/unauthorized customer IDs. Treat suggested judging weights as teaching guidance only, not official PNC criteria.
 

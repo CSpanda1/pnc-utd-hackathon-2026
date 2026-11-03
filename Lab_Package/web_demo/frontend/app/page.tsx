@@ -9,6 +9,24 @@ type Account = { account_id: string; account_type: string; balance: string; mont
 type Financials = { indicators: Indicators; accounts: Account[]; history: History; account_history: Statement[] };
 type Scenario = { purchase_price: number; down_payment: number; apr_pct: number; term_months: number };
 class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
+function detailMessage(detail: unknown): string {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const lines = detail.flatMap((entry): string[] => {
+      if (!entry || typeof entry !== "object") return [];
+      const node = entry as { msg?: unknown; loc?: unknown };
+      const msg = typeof node.msg === "string" ? node.msg : "";
+      const location = Array.isArray(node.loc)
+        ? node.loc.filter((part): part is string | number => typeof part === "string" || typeof part === "number").join(".")
+        : "";
+      if (!msg) return [];
+      return [location ? `${location}: ${msg}` : msg];
+    });
+    if (lines.length > 0) return lines.join(" | ");
+  }
+  return "Check your inputs and try again.";
+}
+
 async function api<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api/${path}`, {
     method: body === undefined ? "GET" : "POST", credentials: "same-origin", cache: "no-store",
@@ -17,7 +35,7 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
   });
   if (response.status === 204) return undefined as T;
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new ApiError(typeof data.detail === "string" ? data.detail : "Check your inputs and try again.", response.status);
+  if (!response.ok) throw new ApiError(detailMessage(data.detail), response.status);
   return data;
 }
 const money = (value: unknown) => typeof value === "number" ? value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }) : "—";
