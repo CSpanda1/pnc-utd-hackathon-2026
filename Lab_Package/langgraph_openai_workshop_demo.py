@@ -17,6 +17,14 @@ from llm_demo import narrate
 
 
 class WorkshopState(TypedDict, total=False):
+    """Shared LangGraph state passed between nodes.
+
+    Required inputs:
+    - customer_id: synthetic customer key (for example C001)
+    - question: participant prompt used for routing and narration
+
+    Optional fields are populated by downstream nodes.
+    """
     customer_id: str
     question: str
     route: Literal['indicators', 'scenario']
@@ -29,10 +37,12 @@ class WorkshopState(TypedDict, total=False):
 
 
 def _append_trace(state: WorkshopState, marker: str) -> list[str]:
+    """Append a trace marker while preserving existing trace entries."""
     return [*state.get('trace', []), marker]
 
 
 def route_question(state: WorkshopState) -> WorkshopState:
+    """Route classroom prompts to either baseline indicators or scenario simulation."""
     question = state['question'].lower()
     wants_scenario = any(token in question for token in (
         'car', 'vehicle', 'purchase', 'loan', 'apr', 'term', 'down payment', 'what if'
@@ -42,6 +52,7 @@ def route_question(state: WorkshopState) -> WorkshopState:
 
 
 def indicator_node(state: WorkshopState) -> WorkshopState:
+    """Calculate deterministic point-in-time indicators from snapshot data."""
     return {
         'indicators': calculate_indicators(state['customer_id']),
         'trace': _append_trace(state, 'indicators:calculated'),
@@ -49,6 +60,7 @@ def indicator_node(state: WorkshopState) -> WorkshopState:
 
 
 def scenario_node(state: WorkshopState) -> WorkshopState:
+    """Run the what-if purchase simulation from supplied assumptions."""
     assumptions = state.get('scenario_assumptions', {
         'purchase_price': 30000,
         'down_payment': 5000,
@@ -68,6 +80,7 @@ def scenario_node(state: WorkshopState) -> WorkshopState:
 
 
 def history_node(state: WorkshopState) -> WorkshopState:
+    """Load summarized transaction history evidence for grounded narration."""
     return {
         'history_evidence': get_history_evidence(state['customer_id']),
         'trace': _append_trace(state, 'history:loaded'),
@@ -75,6 +88,7 @@ def history_node(state: WorkshopState) -> WorkshopState:
 
 
 def narration_node(state: WorkshopState) -> WorkshopState:
+    """Generate the final OpenAI explanation from validated evidence only."""
     evidence = {
         'workshop_question': state['question'],
         'indicators': state.get('indicators') or calculate_indicators(state['customer_id']),
@@ -86,10 +100,12 @@ def narration_node(state: WorkshopState) -> WorkshopState:
 
 
 def _route_selector(state: WorkshopState) -> Literal['indicators', 'scenario']:
+    """Conditional edge selector used by LangGraph after router node."""
     return state['route']
 
 
 def build_graph():
+    """Build and compile the workshop graph topology."""
     builder = StateGraph(WorkshopState)
     builder.add_node('router', route_question)
     builder.add_node('indicators', indicator_node)
@@ -101,6 +117,7 @@ def build_graph():
         'indicators': 'indicators',
         'scenario': 'scenario',
     })
+    # Both routes converge on history evidence before narration.
     builder.add_edge('indicators', 'history')
     builder.add_edge('scenario', 'history')
     builder.add_edge('history', 'narration')
@@ -109,6 +126,7 @@ def build_graph():
 
 
 def run_demo(customer_id: str, question: str, purchase_price: float, down_payment: float, apr_pct: float, term_months: int):
+    """Execute one end-to-end inference pass for a workshop prompt."""
     graph = build_graph()
     initial_state: WorkshopState = {
         'customer_id': customer_id,
@@ -125,6 +143,7 @@ def run_demo(customer_id: str, question: str, purchase_price: float, down_paymen
 
 
 def main():
+    """CLI entry point for workshop demonstrations."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--customer-id', default='C001')
     parser.add_argument('--question', default='If I buy a $30,000 car with $5,000 down at 8% APR for 60 months, what changes?')
