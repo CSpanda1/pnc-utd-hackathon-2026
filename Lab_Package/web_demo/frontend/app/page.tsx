@@ -50,6 +50,58 @@ async function api<T>(path: string, body?: unknown, timeoutMs?: number): Promise
   }
 }
 const money = (value: unknown) => typeof value === "number" ? value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }) : "—";
+const statLabel: Record<string, string> = {
+  mean: "average across months",
+  median: "middle month value",
+  min: "minimum month value",
+  max: "maximum month value",
+  p10: "10th percentile across months",
+  p25: "25th percentile across months",
+  p75: "75th percentile across months",
+  p90: "90th percentile across months",
+};
+const baseMetricLabel: Record<string, string> = {
+  paycheck_income: "Total paycheck inflow",
+  spending: "Modeled spending activity",
+  debt_payments: "Debt payment activity",
+  debt_interest: "Debt interest accrual",
+  asset_interest: "Asset interest accrual",
+  fees: "Fee activity",
+  closing_liquid_assets: "Closing liquid assets",
+  closing_assets: "Closing total assets",
+  closing_debts: "Closing total debts",
+  income_less_spending_and_charges: "Income less spending, debt interest, and fees",
+};
+const explicitIndicatorDescriptions: Record<string, string> = {
+  snapshot_monthly_income: "Current monthly income assumption for this customer profile",
+  snapshot_monthly_non_debt_expenses: "Current non-debt monthly expenses assumption",
+  snapshot_monthly_debt_payments: "Current total scheduled monthly debt payments",
+  snapshot_monthly_cash_surplus: "Current income minus non-debt expenses and debt payments",
+  snapshot_liquid_assets: "Current checking + savings balances",
+  snapshot_emergency_fund_months: "Current liquid assets divided by current monthly outflow",
+  snapshot_debt_payment_to_income_pct: "Current debt payments as a percentage of monthly income",
+  snapshot_credit_card_utilization_pct: "Current credit card balance as a percentage of credit limit",
+  snapshot_savings_rate_pct: "Current surplus as a percentage of monthly income",
+  snapshot_liquid_assets_to_debt_pct: "Current liquid assets as a percentage of total debt balances",
+  history_total_paycheck_income: "24-month total paycheck income from transaction history",
+  history_total_spending: "24-month total spending from transaction history",
+  history_total_debt_payments: "24-month total debt payments from transaction history",
+  history_total_debt_interest: "24-month total debt interest from transaction history",
+  history_total_asset_interest: "24-month total asset interest from transaction history",
+  history_total_fees: "24-month total fees from transaction history",
+  history_total_external_transfers_in: "24-month total external cash-management inflows",
+  history_total_external_transfers_out: "24-month total external cash-management outflows",
+  history_total_income_less_spending_and_charges: "24-month total of income less spending and charges",
+  history_transaction_count: "Total transaction rows in the 24-month synthetic ledger",
+};
+function describeIndicator(name: string): string {
+  if (name in explicitIndicatorDescriptions) return explicitIndicatorDescriptions[name];
+  const parts = name.split("_");
+  const stat = parts.at(-1) || "";
+  const base = parts.slice(0, -1).join("_");
+  if (stat in statLabel && base in baseMetricLabel) return `${baseMetricLabel[base]} (${statLabel[stat]})`;
+  return "Derived synthetic indicator";
+}
 
 export default function Home() {
   const isMounted = useRef(true);
@@ -166,7 +218,7 @@ export default function Home() {
         {indicators100Loading && <p role="status">Loading indicators…</p>}
         {indicators100Error && <p className="error" role="alert">{indicators100Error}</p>}
         {indicators100 && <><p>{indicators100.customer_id} · {indicators100.history_start} to {indicators100.as_of_date} · {indicators100.indicator_count} indicators</p>
-          <div className="table-wrap"><table><thead><tr><th>Indicator</th><th>Value</th></tr></thead><tbody>{Object.entries(indicators100.indicators).sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => <tr key={name}><td>{name.replaceAll("_", " ")}</td><td>{typeof value === "number" ? value.toLocaleString("en-US", { maximumFractionDigits: 4 }) : "—"}</td></tr>)}</tbody></table></div></>}
+          <div className="table-wrap"><table><thead><tr><th>Indicator</th><th>Value</th><th>Description</th></tr></thead><tbody>{Object.entries(indicators100.indicators).sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => <tr key={name}><td>{name.replaceAll("_", " ")}</td><td>{typeof value === "number" ? value.toLocaleString("en-US", { maximumFractionDigits: 4 }) : "—"}</td><td>{describeIndicator(name)}</td></tr>)}</tbody></table></div></>}
       </section>}
       {activeTab === "history" && financials && <HistoryPanel accounts={financials.accounts} history={financials.history} statements={financials.account_history} onExpired={() => { setUser(null); setFinancials(null); setIndicators100(null); setAnswer(""); setResult(null); setError("Session expired; sign in again."); }} />}
     </>}
