@@ -5,6 +5,7 @@ from decimal import Decimal
 from functools import lru_cache
 import json
 from pathlib import Path
+import statistics
 DATA=Path(__file__).parent/'data'
 ASSETS={'checking','savings','cd','ira'}
 DEBTS={'credit_card','auto_loan','personal_loan','mortgage'}
@@ -167,6 +168,58 @@ def simulate_purchase(customer_id, purchase_price, down_payment=0, apr_pct=8, te
     remaining_liquid=m['liquid_assets']-down_payment
     outflow=m['monthly_non_debt_expenses']+m['monthly_debt_payments']+payment
     return {'customer_id':customer_id,'assumptions':{'purchase_price':purchase_price,'down_payment':down_payment,'apr_pct':apr_pct,'term_months':term_months},'new_monthly_payment':round(payment,2),'projected_monthly_surplus':round(m['monthly_cash_surplus']-payment,2),'remaining_liquid_assets':round(remaining_liquid,2),'projected_emergency_fund_months':round(remaining_liquid/outflow,2) if outflow>0 else None,'caveat':'Excludes taxes, insurance, maintenance, loan fees and future changes; not lending advice.'}
+
+def _percentile(values,pct):
+    if not values: return None
+    ordered=sorted(values)
+    if len(ordered)==1: return ordered[0]
+    index=(len(ordered)-1)*pct
+    low=int(index); high=min(low+1,len(ordered)-1)
+    if low==high: return ordered[low]
+    weight=index-low
+    return ordered[low]*(1-weight)+ordered[high]*weight
+
+def _distribution(values):
+    return {'mean':round(statistics.mean(values),4),'median':round(statistics.median(values),4),
+            'min':round(min(values),4),'max':round(max(values),4),
+            'p10':round(_percentile(values,.10),4),'p25':round(_percentile(values,.25),4),
+            'p75':round(_percentile(values,.75),4),'p90':round(_percentile(values,.90),4)}
+
+def get_customer_100_indicators(customer_id):
+    ind=calculate_indicators(customer_id)
+    history=summarize_transaction_history(customer_id)
+    months=history['months']
+    vectors={k:[float(m[k]) for m in months] for k in ('paycheck_income','spending','debt_payments','debt_interest','asset_interest','fees',
+                                                       'closing_liquid_assets','closing_assets','closing_debts','income_less_spending_and_charges')}
+    indicators={}
+    for metric,values in vectors.items():
+        for stat,val in _distribution(values).items():
+            indicators[f'{metric}_{stat}']=val
+    totals=history['totals']
+    indicators.update({
+        'snapshot_monthly_income':ind['monthly_income'],
+        'snapshot_monthly_non_debt_expenses':ind['monthly_non_debt_expenses'],
+        'snapshot_monthly_debt_payments':ind['monthly_debt_payments'],
+        'snapshot_monthly_cash_surplus':ind['monthly_cash_surplus'],
+        'snapshot_liquid_assets':ind['liquid_assets'],
+        'snapshot_emergency_fund_months':ind['emergency_fund_months'],
+        'snapshot_debt_payment_to_income_pct':ind['debt_payment_to_income_pct'],
+        'snapshot_credit_card_utilization_pct':ind['credit_card_utilization_pct'],
+        'snapshot_savings_rate_pct':ind['savings_rate_pct'],
+        'snapshot_liquid_assets_to_debt_pct':ind['liquid_assets_to_debt_pct'],
+        'history_total_paycheck_income':round(float(totals['paycheck_income']),4),
+        'history_total_spending':round(float(totals['spending']),4),
+        'history_total_debt_payments':round(float(totals['debt_payments']),4),
+        'history_total_debt_interest':round(float(totals['debt_interest']),4),
+        'history_total_asset_interest':round(float(totals['asset_interest']),4),
+        'history_total_fees':round(float(totals['fees']),4),
+        'history_total_external_transfers_in':round(float(totals['external_transfers_in']),4),
+        'history_total_external_transfers_out':round(float(totals['external_transfers_out']),4),
+        'history_total_income_less_spending_and_charges':round(sum(float(m['income_less_spending_and_charges']) for m in months),4),
+        'history_transaction_count':int(history['transaction_count']),
+    })
+    if len(indicators)!=100: raise RuntimeError(f'Expected 100 indicators; generated {len(indicators)}')
+    return {'customer_id':customer_id,'indicator_count':100,'history_start':history['history_start'],'as_of_date':history['as_of_date'],'indicators':indicators}
 
 if __name__=='__main__':
     import json

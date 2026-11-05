@@ -174,6 +174,7 @@ If inference dependencies are missing, see `../requirements-hf.txt` and the pare
 | POST | `/auth/logout` | `{}`; revoke session and clear cookie |
 | GET | `/me` | Authenticated user and assigned profile |
 | GET | `/financials` | Authenticated user's indicators and accounts |
+| GET | `/indicators-100` | Authenticated user's 100 detailed indicators |
 | GET | `/transactions` | Authenticated user's paginated ledger; optional account/date filters |
 | POST | `/scenario` | Validated vehicle assumptions, calculated on server |
 | POST | `/narration` | Recalculate evidence for the signed-in user, then explain |

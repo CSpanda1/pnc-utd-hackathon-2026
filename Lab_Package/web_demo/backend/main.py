@@ -19,7 +19,8 @@ from pwdlib import PasswordHash
 LAB = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(LAB))
 from financial_tools import (calculate_indicators, get_accounts, simulate_purchase, get_transactions,
-                             get_account_history, summarize_transaction_history, get_history_evidence)
+                             get_account_history, summarize_transaction_history, get_history_evidence,
+                             get_customer_100_indicators)
 from llm_demo import narrate
 
 PASSWORDS = PasswordHash.recommended()
@@ -240,6 +241,10 @@ def create_app(settings=None):
                 'accounts': get_accounts(user['customer_id']),
                 'history': summarize_transaction_history(user['customer_id']),
                 'account_history': get_account_history(user['customer_id'])}
+
+    @app.get('/indicators-100')
+    def indicators_100(user: User):
+        return get_customer_100_indicators(user['customer_id'])
 
     @app.get('/transactions')
     def transactions(user: User, filters: Annotated[TransactionFilters, Query()]):

@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const routes: Record<string, string> = {
   "auth/register": "POST", "auth/login": "POST", "auth/logout": "POST",
-  me: "GET", financials: "GET", transactions: "GET", scenario: "POST", narration: "POST",
+  me: "GET", financials: "GET", "indicators-100": "GET", transactions: "GET", scenario: "POST", narration: "POST",
 };
 
 function isAllowedOrigin(actualOrigin: string | null, configuredOrigin: string): boolean {

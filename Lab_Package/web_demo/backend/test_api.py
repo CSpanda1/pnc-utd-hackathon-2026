@@ -28,7 +28,7 @@ class ApiTests(unittest.TestCase):
         return self.client.post('/auth/register', json={'email': email, 'password': PASSWORD})
 
     def test_anonymous_access_denied(self):
-        for endpoint in ['/me', '/financials', '/transactions']:
+        for endpoint in ['/me', '/financials', '/indicators-100', '/transactions']:
             self.assertEqual(self.client.get(endpoint).status_code, 401)
         self.assertEqual(self.client.post('/scenario', json={}).status_code, 401)
         self.assertEqual(self.client.post('/narration', json={}).status_code, 401)
@@ -153,6 +153,10 @@ class ApiTests(unittest.TestCase):
         financials = self.client.get('/financials').json()
         self.assertEqual(len(financials['history']['months']), 24)
         self.assertTrue(all(r['customer_id'] == 'C001' for r in financials['account_history']))
+        indicators = self.client.get('/indicators-100').json()
+        self.assertEqual(indicators['customer_id'], 'C001')
+        self.assertEqual(indicators['indicator_count'], 100)
+        self.assertEqual(len(indicators['indicators']), 100)
 
     def test_duplicate_email_and_capacity(self):
         self.register()

@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import HistoryPanel, { type History, type Statement } from "./history-panel";
 
 type User = { id: number; email: string; customer_id: string };
 type Indicators = Record<string, string | number | null>;
+type Indicators100 = { customer_id: string; indicator_count: number; history_start: string; as_of_date: string; indicators: Record<string, number | null> };
 type Account = { account_id: string; account_type: string; balance: string; monthly_payment: string; apr_pct: string };
 type Financials = { indicators: Indicators; accounts: Account[]; history: History; account_history: Statement[] };
 type Scenario = { purchase_price: number; down_payment: number; apr_pct: number; term_months: number };
@@ -27,23 +28,37 @@ function detailMessage(detail: unknown): string {
   return "Check your inputs and try again.";
 }
 
-async function api<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`/api/${path}`, {
-    method: body === undefined ? "GET" : "POST", credentials: "same-origin", cache: "no-store",
-    headers: { "Content-Type": "application/json", "X-Workshop-CSRF": "1" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (response.status === 204) return undefined as T;
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new ApiError(detailMessage(data.detail), response.status);
-  return data;
+async function api<T>(path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+  const controller = timeoutMs ? new AbortController() : undefined;
+  const timer = timeoutMs ? setTimeout(() => controller?.abort(), timeoutMs) : undefined;
+  try {
+    const response = await fetch(`/api/${path}`, {
+      method: body === undefined ? "GET" : "POST", credentials: "same-origin", cache: "no-store",
+      headers: { "Content-Type": "application/json", "X-Workshop-CSRF": "1" },
+      signal: controller?.signal,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (response.status === 204) return undefined as T;
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new ApiError(detailMessage(data.detail), response.status);
+    return data;
+  } catch (exc) {
+    if (exc instanceof Error && exc.name === "AbortError") throw new ApiError("Request timed out. Please retry.", 504);
+    throw exc;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 const money = (value: unknown) => typeof value === "number" ? value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }) : "—";
 
 export default function Home() {
+  const isMounted = useRef(true);
   const [user, setUser] = useState<User | null>(null);
   const [financials, setFinancials] = useState<Financials | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "scenario" | "history">("overview");
+  const [indicators100, setIndicators100] = useState<Indicators100 | null>(null);
+  const [indicators100Loading, setIndicators100Loading] = useState(false);
+  const [indicators100Error, setIndicators100Error] = useState("");
+  const [activeTab, setActiveTab] = useState<"overview" | "scenario" | "history" | "indicators">("overview");
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -52,10 +67,11 @@ export default function Home() {
   const [result, setResult] = useState<Indicators | null>(null);
   const [answer, setAnswer] = useState("");
   function fail(exc: unknown) {
-    if (exc instanceof ApiError && exc.status === 401) { setUser(null); setFinancials(null); setAnswer(""); setResult(null); }
+    if (exc instanceof ApiError && exc.status === 401) { setUser(null); setFinancials(null); setIndicators100(null); setAnswer(""); setResult(null); }
     setError(exc instanceof Error ? exc.message : "Request failed");
   }
   useEffect(() => {
+    isMounted.current = true;
     let active = true;
     (async () => {
       try {
@@ -66,8 +82,22 @@ export default function Home() {
         if (active && !(exc instanceof ApiError && exc.status === 401)) setError(exc instanceof Error ? exc.message : "API unavailable");
       } finally { if (active) setLoading(false); }
     })();
-    return () => { active = false; };
+    return () => { active = false; isMounted.current = false; };
   }, []);
+  useEffect(() => {
+    if (!user || activeTab !== "indicators" || indicators100 || indicators100Loading || indicators100Error) return;
+    (async () => {
+      setIndicators100Loading(true); setIndicators100Error("");
+      try {
+        const deep = await api<Indicators100>("indicators-100", undefined, 15000);
+        if (isMounted.current) setIndicators100(deep);
+      } catch (exc) {
+        if (isMounted.current) setIndicators100Error(exc instanceof Error ? exc.message : "Unable to load indicators");
+      } finally {
+        if (isMounted.current) setIndicators100Loading(false);
+      }
+    })();
+  }, [user, activeTab, indicators100, indicators100Loading, indicators100Error]);
   async function authenticate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
     const form = event.currentTarget;
@@ -76,11 +106,12 @@ export default function Home() {
       const current = await api<User>(`auth/${mode}`, { email: data.get("email"), password: data.get("password") });
       form.reset(); setUser(current);
       setFinancials(await api<Financials>("financials"));
+      setIndicators100(null); setIndicators100Error(""); setActiveTab("overview");
     } catch (exc) { fail(exc); } finally { setBusy(false); }
   }
   async function logout() {
     setBusy(true); setError("");
-    try { await api("auth/logout", {}); setUser(null); setFinancials(null); setResult(null); setAnswer(""); }
+    try { await api("auth/logout", {}); setUser(null); setFinancials(null); setIndicators100(null); setResult(null); setAnswer(""); }
     catch (exc) { fail(exc); } finally { setBusy(false); }
   }
   async function runScenario(explain: boolean) {
@@ -96,7 +127,7 @@ export default function Home() {
   }
   const ind = financials?.indicators;
   return <main>
-    <header><a className="brand" href="/">W<span>／</span> Financial Wellness Lab</a><span className="badge">PNC × UT Dallas · Workshop</span></header>
+    <header><a className="brand" href="/">PNC HackUTD<span>／</span> Financial Wellness Lab</a><span className="badge">PNC × UT Dallas · Workshop</span></header>
     <section className={`intro${user ? " intro-compact" : ""}`}><p className="eyebrow">UNDERSTAND TODAY. EXPLORE TOMORROW.</p><h1>A clearer view of your<br />financial possibilities.</h1><p>Explore your synthetic household, test a vehicle purchase, and get an explanation grounded in calculated results.</p></section>
     <p className="notice">Synthetic data only · Educational prototype · Not banking, credit, investment, or lending advice.</p>
     {error && <div role="alert" className="error">{error}</div>}
@@ -113,6 +144,7 @@ export default function Home() {
       <div role="tablist" aria-label="Dashboard sections" className="dashboard-tabs">
         <button type="button" role="tab" aria-selected={activeTab === "overview"} className={activeTab === "overview" ? "tab-active" : ""} onClick={() => setActiveTab("overview")}>Overview</button>
         <button type="button" role="tab" aria-selected={activeTab === "scenario"} className={activeTab === "scenario" ? "tab-active" : ""} onClick={() => setActiveTab("scenario")}>Scenario Lab</button>
+        <button type="button" role="tab" aria-selected={activeTab === "indicators"} className={activeTab === "indicators" ? "tab-active" : ""} onClick={() => setActiveTab("indicators")}>100 Indicators</button>
         <button type="button" role="tab" aria-selected={activeTab === "history"} className={activeTab === "history" ? "tab-active" : ""} onClick={() => setActiveTab("history")}>History</button>
       </div>
       {activeTab === "overview" && <>
@@ -130,7 +162,13 @@ export default function Home() {
         {busy && <p role="status">Working… local model startup may take a few minutes.</p>}
         {result && <div className="results" aria-live="polite"><p>New monthly payment <b>{money(result.new_monthly_payment)}</b></p><p>Projected monthly surplus <b>{money(result.projected_monthly_surplus)}</b></p><p>Liquid assets after down payment <b>{money(result.remaining_liquid_assets)}</b></p><p>Projected reserve months <b>{result.projected_emergency_fund_months ?? "—"}</b></p><small>{result.caveat}</small></div>}
       </section><aside className="card"><p className="eyebrow">FROM EVIDENCE TO EXPLANATION</p><h2>Grounded considerations</h2><p className="narrative" aria-live="polite">{answer || "Choose Calculate + explain to review your scenario. Calculations come from the financial tools; narration uses the backend’s configured provider."}</p><small>Review model interpretations against the figures. A cash surplus is not proof of actual savings.</small></aside></div>}
-      {activeTab === "history" && financials && <HistoryPanel accounts={financials.accounts} history={financials.history} statements={financials.account_history} onExpired={() => { setUser(null); setFinancials(null); setAnswer(""); setResult(null); setError("Session expired; sign in again."); }} />}
+      {activeTab === "indicators" && <section className="card"><p className="eyebrow">DETAILED PROFILE METRICS</p><h2>100 indicators for your selected customer</h2>
+        {indicators100Loading && <p role="status">Loading indicators…</p>}
+        {indicators100Error && <p className="error" role="alert">{indicators100Error}</p>}
+        {indicators100 && <><p>{indicators100.customer_id} · {indicators100.history_start} to {indicators100.as_of_date} · {indicators100.indicator_count} indicators</p>
+          <div className="table-wrap"><table><thead><tr><th>Indicator</th><th>Value</th></tr></thead><tbody>{Object.entries(indicators100.indicators).sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => <tr key={name}><td>{name.replaceAll("_", " ")}</td><td>{typeof value === "number" ? value.toLocaleString("en-US", { maximumFractionDigits: 4 }) : "—"}</td></tr>)}</tbody></table></div></>}
+      </section>}
+      {activeTab === "history" && financials && <HistoryPanel accounts={financials.accounts} history={financials.history} statements={financials.account_history} onExpired={() => { setUser(null); setFinancials(null); setIndicators100(null); setAnswer(""); setResult(null); setError("Session expired; sign in again."); }} />}
     </>}
     <footer>Built for learning · Synthetic balances are partial · No transactions or credit decisions</footer>
   </main>;
