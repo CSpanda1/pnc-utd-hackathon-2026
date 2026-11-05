@@ -96,6 +96,28 @@ python langchain_openai_workshop_demo.py --customer-id C001 --question "If I buy
 
 The script returns JSON with route, execution trace, key computed values, and final narration so you can compare LangChain and LangGraph workshop patterns side-by-side.
 
+## LangSmith observability demos (LangChain + LangGraph)
+
+Use these scripts when you want trace-level observability in LangSmith:
+- `langchain_openai_langsmith_demo.py`
+- `langgraph_openai_langsmith_demo.py`
+
+```bash
+# Optional packages (if missing):
+python -m pip install langchain langchain-openai langsmith
+
+# Windows PowerShell:
+$env:OPENAI_API_KEY="sk-..."
+$env:OPENAI_MODEL="gpt-4o"
+$env:LANGSMITH_API_KEY="lsv2_pt_..."
+$env:LANGSMITH_PROJECT="pnc-utd-workshop-observability"
+
+python langchain_openai_langsmith_demo.py --customer-id C001 --question "How does my current surplus look?"
+python langgraph_openai_langsmith_demo.py --customer-id C001 --question "If I buy a $30,000 car with $5,000 down, what changes?"
+```
+
+Both scripts enforce `LANGSMITH_TRACING=true`, use OpenAI tool-calling for evidence retrieval, and attach route/customer metadata with traceable run names/tags so workshop runs are easy to filter in LangSmith. In the LangSmith UI you should see Tool Calls instead of "No tool calls".
+
 ## Exploratory data analysis notebook
 
 Open [`PNC_Synthetic_Financial_Wellness_EDA.ipynb`](PNC_Synthetic_Financial_Wellness_EDA.ipynb) in JupyterLab for a comprehensive analysis of the synthetic profiles and accounts. Install `python -m pip install -r requirements-eda.txt` in the selected kernel environment, then run all cells. It requires no API key, model download, or GPU.
@@ -178,8 +200,29 @@ python generate_history.py --end 2026-10-31 --months 24
 - Loan/card interest and fees are synthetic accrual events.
 - External cash-management transfers are synthetic calibration flows that preserve supplied ending balances.
 
+## Generate 100 indicators across customers
+
+Use `review_financial_indicators.py` to generate **100 different cross-customer financial indicators** (portfolio-level metrics), not a per-customer list.
+
+```bash
+python review_financial_indicators.py
+```
+
+Optional:
+
+```bash
+python review_financial_indicators.py --limit-customers 20
+```
+
+Output is JSON with:
+- exactly 100 aggregate indicators
+- customer population used for aggregation
+- metric definitions (distribution and history-ratio groups)
+
+Complete reference (all 100 names + definitions): [`FINANCIAL-INDICATORS-100.md`](FINANCIAL-INDICATORS-100.md)
+
 ## Suggested participant exercises
-A. Grounded conversational coach; B. at least six health indicators; C. vehicle or income-shock what-if; D. bounded function-call router. Test numeric fidelity and unknown/unauthorized customer IDs. Treat suggested judging weights as teaching guidance only, not official PNC criteria.
+A. Grounded conversational coach; B. at least six health indicators; C. vehicle or income-shock what-if; D. bounded function-call router. Test numeric fidelity and unknown/unauthorized customer IDs.
 
 ## Reference docs
 - https://developers.openai.com/api/docs/guides/function-calling

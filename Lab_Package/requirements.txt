@@ -4,3 +4,7 @@ requests>=2.31
 openai>=1.70
 # Optional workflow orchestration:
 langgraph>=0.3
+# Optional observability + framework integrations:
+langchain>=0.3
+langchain-openai>=0.2
+langsmith>=0.3
