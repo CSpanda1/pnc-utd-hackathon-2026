@@ -7,29 +7,35 @@ import json
 from pathlib import Path
 import statistics
 DATA=Path(__file__).parent/'data'
+# Asset/liability groups follow the synthetic account taxonomy used in accounts.csv.
 ASSETS={'checking','savings','cd','ira'}
 DEBTS={'credit_card','auto_loan','personal_loan','mortgage'}
 
 def _read(filename):
+    """Read a CSV from the data directory into row dictionaries."""
     with (DATA/filename).open(newline='') as f: return list(csv.DictReader(f))
 
 def get_customer_profile(customer_id):
+    """Return one customer profile row or fail fast for unknown IDs."""
     rows=[r for r in _read('profiles.csv') if r['customer_id']==customer_id]
     if not rows: raise ValueError('Unknown synthetic customer ID')
     return rows[0]
 
 def get_accounts(customer_id):
+    """Return all account rows for a customer after validating the customer exists."""
     get_customer_profile(customer_id)
     return [r for r in _read('accounts.csv') if r['customer_id']==customer_id]
 
 
 @lru_cache(maxsize=6)
 def _cached_history(path, modified_ns, size):
+    """Cache history-like CSV content and invalidate when file metadata changes."""
     with Path(path).open(newline='', encoding='utf-8') as stream:
         return tuple(csv.DictReader(stream))
 
 
 def _history_rows(filename):
+    """Load history rows with metadata-based cache busting."""
     path = DATA / filename
     stat = path.stat()
     return _cached_history(str(path.resolve()), stat.st_mtime_ns, stat.st_size)
@@ -42,6 +48,7 @@ def _owned_account(customer_id, account_id):
 
 
 def _iso_day(value):
+    """Validate strict ISO day format (YYYY-MM-DD)."""
     if value is None:
         return None
     parsed = date.fromisoformat(value)
@@ -128,11 +135,13 @@ def summarize_transaction_history(customer_id):
 
 
 def get_history_evidence(customer_id):
+    """Return compact history evidence to keep LLM prompts bounded."""
     history = summarize_transaction_history(customer_id)
     return {key: history[key] for key in ('history_start', 'as_of_date', 'totals', 'transaction_count', 'definitions')} | {
         'recent_months': history['months'][-3:]}
 
 def calculate_indicators(customer_id):
+    """Calculate snapshot indicators from profile assumptions and account balances."""
     p=get_customer_profile(customer_id); a=get_accounts(customer_id)
     balances={t:sum(float(x['balance']) for x in a if x['account_type']==t) for t in ASSETS|DEBTS}
     monthly_income=float(p['monthly_income']); nondebt=float(p['monthly_non_debt_expenses'])
@@ -160,9 +169,11 @@ def calculate_indicators(customer_id):
     }
 
 def simulate_purchase(customer_id, purchase_price, down_payment=0, apr_pct=8, term_months=60):
+    """Run a simplified amortized loan scenario against current snapshot indicators."""
     if not 0<=down_payment<=purchase_price or purchase_price<0: raise ValueError('Invalid purchase/down payment')
     if term_months<1 or apr_pct<0: raise ValueError('Invalid loan terms')
     m=calculate_indicators(customer_id)
+    # Standard fixed-rate payment equation; reduce to principal/term for zero APR.
     principal=purchase_price-down_payment; rate=apr_pct/1200
     payment=principal/term_months if rate==0 else principal*rate/(1-(1+rate)**(-term_months))
     remaining_liquid=m['liquid_assets']-down_payment
@@ -170,6 +181,7 @@ def simulate_purchase(customer_id, purchase_price, down_payment=0, apr_pct=8, te
     return {'customer_id':customer_id,'assumptions':{'purchase_price':purchase_price,'down_payment':down_payment,'apr_pct':apr_pct,'term_months':term_months},'new_monthly_payment':round(payment,2),'projected_monthly_surplus':round(m['monthly_cash_surplus']-payment,2),'remaining_liquid_assets':round(remaining_liquid,2),'projected_emergency_fund_months':round(remaining_liquid/outflow,2) if outflow>0 else None,'caveat':'Excludes taxes, insurance, maintenance, loan fees and future changes; not lending advice.'}
 
 def _percentile(values,pct):
+    """Percentile with linear interpolation between adjacent ranked points."""
     if not values: return None
     ordered=sorted(values)
     if len(ordered)==1: return ordered[0]
@@ -180,12 +192,20 @@ def _percentile(values,pct):
     return ordered[low]*(1-weight)+ordered[high]*weight
 
 def _distribution(values):
+    """Return distribution summary stats used in the 100-indicator panel."""
     return {'mean':round(statistics.mean(values),4),'median':round(statistics.median(values),4),
             'min':round(min(values),4),'max':round(max(values),4),
             'p10':round(_percentile(values,.10),4),'p25':round(_percentile(values,.25),4),
             'p75':round(_percentile(values,.75),4),'p90':round(_percentile(values,.90),4)}
 
 def get_customer_100_indicators(customer_id):
+    """Build exactly 100 customer-level indicators for UI display.
+
+    Structure:
+    - 80 monthly-history distribution indicators:
+      10 monthly metrics × 8 stats (mean/median/min/max/p10/p25/p75/p90)
+    - 20 snapshot/history-total indicators
+    """
     ind=calculate_indicators(customer_id)
     history=summarize_transaction_history(customer_id)
     months=history['months']
@@ -196,6 +216,8 @@ def get_customer_100_indicators(customer_id):
         for stat,val in _distribution(values).items():
             indicators[f'{metric}_{stat}']=val
     totals=history['totals']
+    # Snapshot values capture current-state profile/account assumptions.
+    # History totals capture 24-month synthetic transaction behavior.
     indicators.update({
         'snapshot_monthly_income':ind['monthly_income'],
         'snapshot_monthly_non_debt_expenses':ind['monthly_non_debt_expenses'],
@@ -218,6 +240,7 @@ def get_customer_100_indicators(customer_id):
         'history_total_income_less_spending_and_charges':round(sum(float(m['income_less_spending_and_charges']) for m in months),4),
         'history_transaction_count':int(history['transaction_count']),
     })
+    # Keep this strict so frontend/analytics assumptions stay stable.
     if len(indicators)!=100: raise RuntimeError(f'Expected 100 indicators; generated {len(indicators)}')
     return {'customer_id':customer_id,'indicator_count':100,'history_start':history['history_start'],'as_of_date':history['as_of_date'],'indicators':indicators}
 
