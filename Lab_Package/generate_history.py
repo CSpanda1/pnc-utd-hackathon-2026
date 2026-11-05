@@ -18,18 +18,22 @@ YIELDS = {'checking': 0, 'savings': 2.5, 'cd': 4.25, 'ira': 3.5}
 
 
 def cents(value):
+    """Convert a numeric value to integer cents using half-up rounding."""
     return int((Decimal(str(value)) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
 def dollars(value):
+    """Convert integer cents to a fixed 2-decimal USD string."""
     return f'{value / 100:.2f}'
 
 
 def interest(balance, annual_pct):
+    """Simple monthly accrual: balance * annual_pct / 12 with cent rounding."""
     return int((Decimal(balance) * Decimal(str(annual_pct)) / 1200).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
 def write_csv(path, rows):
+    """Write a list of dictionaries to CSV with stable column ordering."""
     with path.open('w', newline='', encoding='utf-8') as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()
@@ -37,6 +41,7 @@ def write_csv(path, rows):
 
 
 def generate_history(data_dir=None, end=date(2026, 10, 31), months=24):
+    """Generate deterministic ledger history anchored to snapshot closing balances."""
     data_dir = Path(data_dir or Path(__file__).parent / 'data')
     if not 1 <= months <= 120 or end.day != calendar.monthrange(end.year, end.month)[1]:
         raise ValueError('Use 1–120 months and a month-end date')
@@ -67,6 +72,7 @@ def generate_history(data_dir=None, end=date(2026, 10, 31), months=24):
 
         def add(kind, month_index, day, transaction_type, amount, sign, category,
                 flow_class, transfer_id='', description=None):
+            # sign=+1 increases the account balance; sign=-1 decreases it.
             nonlocal event_serial
             if amount <= 0:
                 return
@@ -81,6 +87,7 @@ def generate_history(data_dir=None, end=date(2026, 10, 31), months=24):
                 transfer_id=transfer_id, serial=event_serial))
 
         def paired(kind, month_index, day, transaction_type, amount, sign, category):
+            # Create both sides of an internal transfer with a shared transfer_id.
             link = f'X-{cid}-{kind}-{month_index:02d}-{transaction_type}'
             add(kind, month_index, day, transaction_type, amount, sign, category, 'internal_transfer', link)
             checking_type = ('transfer_out' if sign > 0 else 'deposit') if kind in ASSETS else 'payment'
@@ -97,11 +104,13 @@ def generate_history(data_dir=None, end=date(2026, 10, 31), months=24):
             deposits = [max(1, int(final * rng.uniform(.0015, .004))) for _ in periods]
             withdrawals = [int(final * .001) if kind == 'savings' and m % 3 == 0 else 0 for m in range(months)]
             def ending(initial):
+                # Simulate ending balance from a guessed opening balance.
                 value = initial
                 for deposit, withdrawal in zip(deposits, withdrawals):
                     value += deposit - withdrawal
                     value += interest(value, YIELDS[kind])
                 return value
+            # Binary search opening balance so generated series lands on final snapshot.
             low, high = 0, final
             while low < high:
                 mid = (low + high + 1) // 2
@@ -140,6 +149,7 @@ def generate_history(data_dir=None, end=date(2026, 10, 31), months=24):
                 continue
             account = by_type[kind]
             final = cents(account['balance'])
+            # Generate principal portions; interest/fees are added separately.
             principal = [max(1, int(cents(account['monthly_payment']) * rng.uniform(.18, .32))) for _ in periods]
             opening[kind] = value = final + sum(principal)
             for m in range(months):

@@ -16,12 +16,14 @@ DATA = Path(__file__).parent / "data"
 
 
 def _list_customer_ids(limit: int | None = None) -> list[str]:
+    """Return sorted customer IDs from profiles.csv with an optional cap."""
     with (DATA / "profiles.csv").open(newline="", encoding="utf-8") as stream:
         rows = sorted({row["customer_id"] for row in csv.DictReader(stream)})
     return rows if limit is None else rows[:limit]
 
 
 def _percentile(values: list[float], pct: float) -> float | None:
+    """Compute percentile with linear interpolation between adjacent ranks."""
     if not values:
         return None
     ordered = sorted(values)
@@ -37,10 +39,12 @@ def _percentile(values: list[float], pct: float) -> float | None:
 
 
 def _safe_ratio(numerator: float, denominator: float) -> float:
+    """Return a stable ratio and avoid division-by-zero explosions."""
     return 0.0 if denominator == 0 else numerator / denominator
 
 
 def _build_metric_vectors(customer_ids: list[str]) -> dict[str, list[float]]:
+    """Build raw vectors/counters used by the 100-indicator aggregate output."""
     vectors: dict[str, list[float]] = {
         "monthly_income": [],
         "monthly_non_debt_expenses": [],
@@ -75,11 +79,13 @@ def _build_metric_vectors(customer_ids: list[str]) -> dict[str, list[float]]:
         ind = calculate_indicators(customer_id)
         history = summarize_transaction_history(customer_id)
         totals = history["totals"]
+        # Snapshot vectors are reused for distribution-style indicators.
         for key in vectors:
             value = ind.get(key)
             if isinstance(value, (int, float)):
                 vectors[key].append(float(value))
 
+        # Counter block contributes percentage-style portfolio indicators.
         if ind.get("monthly_cash_surplus", 0) < 0:
             counters["negative_monthly_surplus"] += 1
         if ind.get("monthly_cash_surplus", 0) > 0:
@@ -97,6 +103,7 @@ def _build_metric_vectors(customer_ids: list[str]) -> dict[str, list[float]]:
         if isinstance(ind.get("savings_rate_pct"), (int, float)) and ind["savings_rate_pct"] < 0:
             counters["negative_savings_rate"] += 1
 
+        # History ratios summarize 24-month synthetic activity behavior.
         paycheck = float(totals["paycheck_income"])
         spending = float(totals["spending"])
         debt_interest = float(totals["debt_interest"])
@@ -113,6 +120,7 @@ def _build_metric_vectors(customer_ids: list[str]) -> dict[str, list[float]]:
 
 
 def _distribution_indicators(name: str, values: list[float]) -> dict[str, float | None]:
+    """Expand one vector into mean/median/min/max/p10/p25/p75/p90 indicators."""
     if not values:
         return {
             f"{name}_mean": None,
@@ -137,6 +145,12 @@ def _distribution_indicators(name: str, values: list[float]) -> dict[str, float 
 
 
 def generate_100_indicators(limit_customers: int | None = None) -> dict:
+    """Generate exactly 100 cross-customer indicators.
+
+    Composition:
+    - 80 distribution indicators (10 vectors × 8 stats)
+    - 20 portfolio-share/ratio/count indicators
+    """
     customer_ids = _list_customer_ids(limit_customers)
     if not customer_ids:
         raise ValueError("No customers found in profiles.csv")
@@ -176,6 +190,7 @@ def generate_100_indicators(limit_customers: int | None = None) -> dict:
         "median_fees_to_income_ratio": round(statistics.median(history_ratios["fees_to_income_ratio"]), 6),
     })
     if len(indicators) != 100:
+        # Keep this strict so UI/contracts depending on exactly 100 fields stay stable.
         raise RuntimeError(f"Expected exactly 100 indicators, generated {len(indicators)}")
 
     return {
@@ -191,6 +206,7 @@ def generate_100_indicators(limit_customers: int | None = None) -> dict:
 
 
 def main():
+    """CLI entry point for generating and printing the indicator report."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit-customers", type=int, default=None,
                         help="Optional cap on customer population before cross-customer aggregation.")
