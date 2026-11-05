@@ -118,6 +118,26 @@ python langgraph_openai_langsmith_demo.py --customer-id C001 --question "If I bu
 
 Both scripts enforce `LANGSMITH_TRACING=true`, use OpenAI tool-calling for evidence retrieval, and attach route/customer metadata with traceable run names/tags so workshop runs are easy to filter in LangSmith. In the LangSmith UI you should see Tool Calls instead of "No tool calls".
 
+## RAG-based scenario testing demo
+
+Use `rag_scenario_testing_demo.py` as a separate Retrieval-Augmented Generation demonstration for scenario testing.
+
+It performs:
+1. synthetic customer knowledge-base assembly (snapshot, accounts, history, guardrails)
+2. TF-IDF retrieval for scenario-focused questions
+3. retrieval coverage scoring against expected terms
+4. optional OpenAI grounded answer generation (`--provider openai`)
+
+```bash
+# Offline retrieval + scoring only:
+python rag_scenario_testing_demo.py --customer-id C001 --top-k 4 --provider none
+
+# Retrieval + OpenAI answer generation:
+set OPENAI_API_KEY=sk-...
+set OPENAI_MODEL=gpt-4o
+python rag_scenario_testing_demo.py --customer-id C001 --top-k 4 --provider openai
+```
+
 ## Exploratory data analysis notebook
 
 Open [`PNC_Synthetic_Financial_Wellness_EDA.ipynb`](PNC_Synthetic_Financial_Wellness_EDA.ipynb) in JupyterLab for a comprehensive analysis of the synthetic profiles and accounts. Install `python -m pip install -r requirements-eda.txt` in the selected kernel environment, then run all cells. It requires no API key, model download, or GPU.
