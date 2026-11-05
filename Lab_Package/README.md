@@ -80,6 +80,22 @@ python langgraph_openai_workshop_demo.py --customer-id C001 --question "If I buy
 
 The script prints JSON including route trace, key computed values, and the final model answer. It demonstrates LangGraph orchestration for workshop inference while keeping all calculations in `financial_tools.py`.
 
+## LangChain + OpenAI workshop inference example
+
+Use `langchain_openai_workshop_demo.py` for a runnable LangChain LCEL pipeline demo that routes a workshop question, gathers deterministic evidence, and calls OpenAI through `langchain-openai`.
+
+```bash
+# Optional packages (if missing):
+python -m pip install langchain langchain-openai
+
+# Windows PowerShell:
+$env:OPENAI_API_KEY="sk-..."
+$env:OPENAI_MODEL="gpt-4o"
+python langchain_openai_workshop_demo.py --customer-id C001 --question "If I buy a $30,000 car with $5,000 down, what changes?"
+```
+
+The script returns JSON with route, execution trace, key computed values, and final narration so you can compare LangChain and LangGraph workshop patterns side-by-side.
+
 ## Exploratory data analysis notebook
 
 Open [`PNC_Synthetic_Financial_Wellness_EDA.ipynb`](PNC_Synthetic_Financial_Wellness_EDA.ipynb) in JupyterLab for a comprehensive analysis of the synthetic profiles and accounts. Install `python -m pip install -r requirements-eda.txt` in the selected kernel environment, then run all cells. It requires no API key, model download, or GPU.
