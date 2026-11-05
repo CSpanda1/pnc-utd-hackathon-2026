@@ -33,6 +33,85 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
+### Backend run guide (Windows PowerShell)
+
+Use this quick sequence when starting backend-only demos from Windows:
+
+```powershell
+cd C:\Users\muthu\PycharmProjects\pnc-utd-hackathon-2026\Lab_Package\web_demo
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Important:
+- Run `uvicorn` from `Lab_Package\web_demo` (or you will get `ModuleNotFoundError: No module named 'backend'`).
+- Keep one backend process on port 8000 (or you will get WinError 10048 port-in-use).
+
+If 8000 is busy:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8000 -State Listen | Select-Object -First 1 -ExpandProperty OwningProcess
+Stop-Process -Id <PID>
+```
+
+## Provider setup (backend process)
+
+Set provider environment variables **in the same shell** before launching uvicorn.
+
+### Hugging Face
+
+```powershell
+$env:LLM_PROVIDER="huggingface"
+$env:HF_DEVICE="cpu"   # or gpu in your supported environment
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+### Foundry Local
+
+1. Start Foundry service and note endpoint/model IDs:
+
+```powershell
+foundry service status
+Invoke-WebRequest "http://127.0.0.1:<PORT>/v1/models" -UseBasicParsing
+```
+
+2. Configure backend with the exact endpoint and an available model ID:
+
+```powershell
+$env:LLM_PROVIDER="foundry"
+$env:FOUNDRY_BASE_URL="http://127.0.0.1:<PORT>/v1"
+$env:FOUNDRY_MODEL="qwen2.5-0.5b-instruct-generic-gpu:4"   # example; use your returned ID
+$env:FOUNDRY_API_KEY="foundry-local"
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Notes:
+- `FOUNDRY_BASE_URL` must be the active service endpoint. If Foundry restarts with a new port, update this value.
+- Some aliases work in CLI but fail in API calls; prefer the exact model ID from `/v1/models`.
+
+### OpenAI
+
+```powershell
+$env:LLM_PROVIDER="openai"
+$env:OPENAI_MODEL="gpt-4.1"   # or gpt-4o
+$env:OPENAI_API_KEY="sk-..."  # include quotes
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Do not set key values like `OPENAI_API_KEY=...` without `$env:` in PowerShell; that is parsed as a command and fails.
+
+## Quick verification
+
+From another shell:
+
+```powershell
+Invoke-WebRequest "http://127.0.0.1:8000/health" -UseBasicParsing
+Invoke-WebRequest "http://127.0.0.1:8000/docs" -UseBasicParsing
+```
+
+Then open the frontend at `http://localhost:3000`, sign in/register, run **Calculate + explain**, and confirm `/narration` succeeds in backend logs.
+
 The API stores its SQLite database in ignored `backend/state/workshop.sqlite3`. API documentation: <http://127.0.0.1:8000/docs>. The docs UI is for inspecting contracts; mutation requests also need the origin and CSRF header described below.
 
 ### Terminal 2: Next.js
