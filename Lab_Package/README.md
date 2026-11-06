@@ -138,6 +138,38 @@ set OPENAI_MODEL=gpt-4o
 python rag_scenario_testing_demo.py --customer-id C001 --top-k 4 --provider openai
 ```
 
+## Monte Carlo simulation demo (OpenAI + Hugging Face)
+
+Use `monte_carlo_simulation_demo.py` to run synthetic Monte Carlo cashflow simulation and compare AI explanations from both providers.
+
+```bash
+# Run both providers (default):
+python monte_carlo_simulation_demo.py --customer-id C001 --trials 1000 --months 24 --providers openai,huggingface
+
+# Add a vehicle purchase scenario shock:
+python monte_carlo_simulation_demo.py --customer-id C001 --include-purchase --purchase-price 30000 --down-payment 5000 --apr-pct 8 --term-months 60
+```
+
+Provider setup:
+- OpenAI: set `OPENAI_API_KEY` (and optional `OPENAI_MODEL`)
+- Hugging Face: ensure your local cached model setup works with `local_hf.py` / `HF_MODEL`
+
+## Markov-chain simulation demo (OpenAI + Hugging Face)
+
+Use `markov_chain_simulation_demo.py` to model transitions between financial states (`stable`, `watch`, `stress`, `critical`) and compare model-generated explanations.
+
+```bash
+# Run both providers (default):
+python markov_chain_simulation_demo.py --customer-id C001 --trials 2000 --months 24 --providers openai,huggingface
+
+# Add purchase-shock transition risk:
+python markov_chain_simulation_demo.py --customer-id C001 --include-purchase --purchase-price 30000 --down-payment 5000 --apr-pct 8 --term-months 60
+```
+
+Provider setup:
+- OpenAI: set `OPENAI_API_KEY` (and optional `OPENAI_MODEL`)
+- Hugging Face: ensure your local cached model setup works with `local_hf.py` / `HF_MODEL`
+
 ## Exploratory data analysis notebook
 
 Open [`PNC_Synthetic_Financial_Wellness_EDA.ipynb`](PNC_Synthetic_Financial_Wellness_EDA.ipynb) in JupyterLab for a comprehensive analysis of the synthetic profiles and accounts. Install `python -m pip install -r requirements-eda.txt` in the selected kernel environment, then run all cells. It requires no API key, model download, or GPU.
