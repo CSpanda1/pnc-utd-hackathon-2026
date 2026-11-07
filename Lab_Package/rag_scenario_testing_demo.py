@@ -24,20 +24,24 @@ TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
 @dataclass(frozen=True)
 class Chunk:
+    """Small retrievable unit in the synthetic knowledge base."""
     id: str
     text: str
     source: str
 
 
 def _tokenize(text: str) -> list[str]:
+    """Tokenize text into lowercase alphanumeric terms for lexical retrieval."""
     return TOKEN_PATTERN.findall(text.lower())
 
 
 def _tf(tokens: list[str]) -> Counter:
+    """Compute term frequency counts for one token list."""
     return Counter(tokens)
 
 
 def _idf(chunks: list[Chunk]) -> dict[str, float]:
+    """Compute smoothed inverse document frequency across all chunks."""
     docs = [_tokenize(chunk.text) for chunk in chunks]
     doc_count = len(docs)
     df = Counter()
@@ -47,6 +51,7 @@ def _idf(chunks: list[Chunk]) -> dict[str, float]:
 
 
 def _vector(counter: Counter, idf: dict[str, float]) -> dict[str, float]:
+    """Build L2-normalized TF-IDF vector from term counts."""
     if not counter:
         return {}
     norm_base = sum(counter.values())
@@ -58,6 +63,7 @@ def _vector(counter: Counter, idf: dict[str, float]) -> dict[str, float]:
 
 
 def _cosine(v1: dict[str, float], v2: dict[str, float]) -> float:
+    """Return cosine similarity between sparse vectors."""
     if not v1 or not v2:
         return 0.0
     if len(v1) > len(v2):
@@ -66,10 +72,12 @@ def _cosine(v1: dict[str, float], v2: dict[str, float]) -> float:
 
 
 def build_customer_knowledge_base(customer_id: str) -> list[Chunk]:
+    """Assemble retrieval corpus from policy, snapshot, account, and history evidence."""
     indicators = calculate_indicators(customer_id)
     accounts = get_accounts(customer_id)
     history = summarize_transaction_history(customer_id)
     chunks: list[Chunk] = []
+    # Policy chunk anchors model behavior to workshop-safe usage.
     chunks.append(Chunk(
         id="policy-guardrails",
         source="policy",
@@ -116,6 +124,7 @@ def build_customer_knowledge_base(customer_id: str) -> list[Chunk]:
         ),
     ))
     for idx, month in enumerate(history["months"][-6:], start=1):
+        # Keep recent months only to retain useful trend signal without oversized context.
         chunks.append(Chunk(
             id=f"recent-month-{idx}",
             source="history",
@@ -130,6 +139,7 @@ def build_customer_knowledge_base(customer_id: str) -> list[Chunk]:
 
 
 def retrieve(query: str, chunks: list[Chunk], top_k: int = 4) -> list[tuple[Chunk, float]]:
+    """Rank chunks by TF-IDF cosine similarity for a query."""
     idf = _idf(chunks)
     query_vec = _vector(_tf(_tokenize(query)), idf)
     scored: list[tuple[Chunk, float]] = []
@@ -141,6 +151,7 @@ def retrieve(query: str, chunks: list[Chunk], top_k: int = 4) -> list[tuple[Chun
 
 
 def generate_answer_with_openai(question: str, retrieved: list[tuple[Chunk, float]]) -> str:
+    """Generate a grounded response using only retrieved evidence."""
     from openai import OpenAI
 
     if not os.getenv("OPENAI_API_KEY"):
@@ -161,6 +172,7 @@ def generate_answer_with_openai(question: str, retrieved: list[tuple[Chunk, floa
 
 
 def generate_answer_offline(question: str, retrieved: list[tuple[Chunk, float]]) -> str:
+    """Return deterministic retrieval summary when no model provider is used."""
     lines = [f"- Retrieved [{chunk.id}] (score={score:.4f}) from {chunk.source}." for chunk, score in retrieved]
     return (
         "Offline RAG mode (no model call). Use retrieved evidence below for scenario reasoning:\n"
@@ -169,6 +181,7 @@ def generate_answer_offline(question: str, retrieved: list[tuple[Chunk, float]])
 
 
 def scenario_test_cases() -> list[dict]:
+    """Define benchmark prompts with expected retrieval terms."""
     return [
         {
             "name": "vehicle-purchase-impact",
@@ -192,6 +205,7 @@ def scenario_test_cases() -> list[dict]:
 
 
 def _coverage_score(retrieved_text: str, expected_terms: list[str]) -> dict:
+    """Measure lexical coverage of expected terms in retrieved evidence."""
     lower = retrieved_text.lower()
     hits = [term for term in expected_terms if term.lower() in lower]
     return {
@@ -202,6 +216,7 @@ def _coverage_score(retrieved_text: str, expected_terms: list[str]) -> dict:
 
 
 def run_rag_scenario_testing(customer_id: str, top_k: int = 4, provider: str = "none") -> dict:
+    """Execute retrieval tests and return report with coverage and optional model answers."""
     chunks = build_customer_knowledge_base(customer_id)
     report = []
     for case in scenario_test_cases():
@@ -210,6 +225,7 @@ def run_rag_scenario_testing(customer_id: str, top_k: int = 4, provider: str = "
         coverage = _coverage_score(retrieved_text, case["expected_terms"])
         scenario_output = None
         if case["scenario"] is not None:
+            # Scenario output provides numeric ground truth alongside text retrieval.
             scenario_output = simulate_purchase(customer_id, **case["scenario"])
         if provider == "openai":
             answer = generate_answer_with_openai(case["question"], retrieved)
@@ -241,6 +257,7 @@ def run_rag_scenario_testing(customer_id: str, top_k: int = 4, provider: str = "
 
 
 def main():
+    """CLI entrypoint for running the RAG scenario testing demo."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--customer-id", default="C001")
     parser.add_argument("--top-k", type=int, default=4)
