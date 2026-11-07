@@ -28,6 +28,7 @@ BASE_TRANSITIONS: dict[str, dict[str, float]] = {
 
 @dataclass(frozen=True)
 class MarkovConfig:
+    """Configuration for one Markov-chain simulation run."""
     trials: int = 2000
     months: int = 24
     seed: int = 42
@@ -39,10 +40,12 @@ class MarkovConfig:
 
 
 def _pct_to_ratio(value: float) -> float:
+    """Normalize values that may be represented as percent (e.g., 42) or ratio (0.42)."""
     return value / 100.0 if value > 1.0 else value
 
 
 def _normalize_row(row: dict[str, float]) -> dict[str, float]:
+    """Ensure each transition row is a proper probability distribution."""
     total = sum(row.values())
     if total <= 0:
         return {"stable": 0.0, "watch": 0.0, "stress": 0.0, "critical": 1.0}
@@ -50,6 +53,7 @@ def _normalize_row(row: dict[str, float]) -> dict[str, float]:
 
 
 def _shift_mass(row: dict[str, float], from_state: str, to_state: str, amount: float) -> None:
+    """Move transition probability mass between states while preserving non-negativity."""
     if amount <= 0:
         return
     available = row.get(from_state, 0.0)
@@ -59,6 +63,7 @@ def _shift_mass(row: dict[str, float], from_state: str, to_state: str, amount: f
 
 
 def _derive_initial_state(indicators: dict) -> str:
+    """Map customer indicators to a starting financial state."""
     surplus = float(indicators["monthly_cash_surplus"])
     emergency = float(indicators["emergency_fund_months"])
     dti = _pct_to_ratio(float(indicators["debt_payment_to_income_pct"]))
@@ -74,6 +79,7 @@ def _derive_initial_state(indicators: dict) -> str:
 
 
 def _risk_adjustment(indicators: dict, scenario_payment: float) -> float:
+    """Compute a bounded stress drift used to tilt the transition matrix."""
     income = max(1.0, float(indicators["monthly_income"]))
     dti = _pct_to_ratio(float(indicators["debt_payment_to_income_pct"]))
     util = _pct_to_ratio(float(indicators["credit_card_utilization_pct"]))
@@ -88,9 +94,11 @@ def _risk_adjustment(indicators: dict, scenario_payment: float) -> float:
 
 
 def build_transition_matrix(indicators: dict, scenario_payment: float) -> tuple[dict[str, dict[str, float]], float]:
+    """Create a risk-adjusted transition matrix and return matrix plus applied drift."""
     drift = _risk_adjustment(indicators, scenario_payment)
     matrix = {state: dict(row) for state, row in BASE_TRANSITIONS.items()}
 
+    # Apply asymmetric stress drift so higher-risk states become more likely under pressure.
     _shift_mass(matrix["stable"], "stable", "watch", drift)
     _shift_mass(matrix["stable"], "watch", "stress", drift * 0.40)
 
@@ -109,6 +117,7 @@ def build_transition_matrix(indicators: dict, scenario_payment: float) -> tuple[
 
 
 def _sample_next_state(row: dict[str, float], rng: random.Random) -> str:
+    """Sample the next state from one transition row."""
     x = rng.random()
     cumulative = 0.0
     for state in STATES:
@@ -119,14 +128,17 @@ def _sample_next_state(row: dict[str, float], rng: random.Random) -> str:
 
 
 def _checkpoint_months(months: int) -> list[int]:
+    """Return month checkpoints used for intermediate probability snapshots."""
     marks = {1, 3, 6, 12, months}
     return sorted(m for m in marks if 1 <= m <= months)
 
 
 def run_markov_chain(customer_id: str, config: MarkovConfig) -> dict:
+    """Simulate state transitions for many trials and aggregate risk metrics."""
     indicators = calculate_indicators(customer_id)
     scenario_payment = 0.0
     if config.include_purchase:
+        # Optional purchase adds payment shock, which shifts transition probabilities.
         scenario = simulate_purchase(
             customer_id=customer_id,
             purchase_price=config.purchase_price,
@@ -152,6 +164,7 @@ def run_markov_chain(customer_id: str, config: MarkovConfig) -> dict:
         months_in_critical = 1 if state == "critical" else 0
 
         for month in range(1, config.months + 1):
+            # Standard time-homogeneous Markov process: state_{t+1} depends only on state_t.
             state = _sample_next_state(transition_matrix[state], rng)
             if state in {"stress", "critical"}:
                 had_stress_or_worse = True
@@ -197,6 +210,7 @@ def run_markov_chain(customer_id: str, config: MarkovConfig) -> dict:
 
 
 def _build_prompt(simulation: dict) -> str:
+    """Build a provider-agnostic narration prompt from Markov outputs."""
     return (
         "You are an educational financial wellness assistant.\n"
         "Use ONLY the Markov-chain simulation JSON below.\n"
@@ -208,6 +222,7 @@ def _build_prompt(simulation: dict) -> str:
 
 
 def generate_with_openai(prompt: str) -> str:
+    """Generate narration via OpenAI Responses API."""
     from openai import OpenAI
 
     api_key = os.getenv("OPENAI_API_KEY")
@@ -219,12 +234,14 @@ def generate_with_openai(prompt: str) -> str:
 
 
 def generate_with_huggingface(prompt: str) -> str:
+    """Generate narration via local Hugging Face model wrapper."""
     from local_hf import generate_local
 
     return generate_local(prompt)
 
 
 def run_demo(customer_id: str, config: MarkovConfig, providers: list[str]) -> dict:
+    """Run Markov simulation once, then request narration from selected providers."""
     simulation = run_markov_chain(customer_id, config)
     prompt = _build_prompt(simulation)
     narrations: dict[str, dict] = {}
@@ -245,12 +262,14 @@ def run_demo(customer_id: str, config: MarkovConfig, providers: list[str]) -> di
                 raise ValueError(f"Unsupported provider: {provider}")
             narrations[provider] = {"status": "ok", "output": output}
         except Exception as exc:
+            # Preserve simulation output even if one narration provider fails.
             narrations[provider] = {"status": "error", "error": str(exc)}
 
     return {"simulation": simulation, "narrations": narrations}
 
 
 def _parse_providers(value: str) -> list[str]:
+    """Parse and validate comma-separated providers from CLI input."""
     raw = [part.strip().lower() for part in value.split(",") if part.strip()]
     if not raw:
         return ["openai", "huggingface"]
@@ -262,6 +281,7 @@ def _parse_providers(value: str) -> list[str]:
 
 
 def main() -> None:
+    """CLI entrypoint."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--customer-id", default="C001")
     parser.add_argument("--trials", type=int, default=2000)

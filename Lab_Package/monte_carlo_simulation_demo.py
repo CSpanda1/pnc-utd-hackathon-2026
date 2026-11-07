@@ -17,6 +17,7 @@ from financial_tools import calculate_indicators, simulate_purchase
 
 @dataclass(frozen=True)
 class MonteCarloConfig:
+    """Configuration for one Monte Carlo experiment."""
     trials: int = 1000
     months: int = 24
     seed: int = 42
@@ -30,6 +31,7 @@ class MonteCarloConfig:
 
 
 def _percentile(values: list[float], pct: float) -> float:
+    """Return a linearly interpolated percentile for a numeric sample."""
     if not values:
         return 0.0
     if pct <= 0:
@@ -45,6 +47,7 @@ def _percentile(values: list[float], pct: float) -> float:
 
 
 def run_monte_carlo(customer_id: str, config: MonteCarloConfig) -> dict:
+    """Simulate monthly cashflow paths and summarize downside/central outcomes."""
     indicators = calculate_indicators(customer_id)
     base_income = float(indicators["monthly_income"])
     base_expenses = float(indicators["monthly_non_debt_expenses"])
@@ -53,6 +56,7 @@ def run_monte_carlo(customer_id: str, config: MonteCarloConfig) -> dict:
 
     scenario_payment = 0.0
     if config.include_purchase:
+        # Inject optional loan payment shock into each simulated month.
         scenario = simulate_purchase(
             customer_id=customer_id,
             purchase_price=config.purchase_price,
@@ -69,12 +73,14 @@ def run_monte_carlo(customer_id: str, config: MonteCarloConfig) -> dict:
     liquid_below_zero_count = 0
 
     for _ in range(config.trials):
+        # Down payment is applied once at simulation start, then monthly cashflow evolves stochastically.
         liquid = starting_liquid - (config.down_payment if config.include_purchase else 0.0)
         monthly_surplus_values: list[float] = []
         had_negative_month = False
         had_liquid_below_zero = liquid < 0
 
         for _month in range(config.months):
+            # Income and expenses are shocked independently around the baseline with Gaussian noise.
             income = base_income * max(0.0, 1.0 + rng.gauss(0.0, config.income_volatility))
             expenses = base_expenses * max(0.0, 1.0 + rng.gauss(0.0, config.expense_volatility))
             debt = base_debt + scenario_payment
@@ -123,6 +129,7 @@ def run_monte_carlo(customer_id: str, config: MonteCarloConfig) -> dict:
 
 
 def _build_prompt(simulation: dict) -> str:
+    """Build a provider-agnostic narration prompt from simulation JSON."""
     return (
         "You are an educational financial wellness assistant.\n"
         "Use ONLY the simulation JSON below. Do not invent facts or provide lending/underwriting advice.\n"
@@ -133,6 +140,7 @@ def _build_prompt(simulation: dict) -> str:
 
 
 def generate_with_openai(prompt: str) -> str:
+    """Generate narration via OpenAI Responses API."""
     from openai import OpenAI
 
     api_key = os.getenv("OPENAI_API_KEY")
@@ -144,12 +152,14 @@ def generate_with_openai(prompt: str) -> str:
 
 
 def generate_with_huggingface(prompt: str) -> str:
+    """Generate narration via local Hugging Face model wrapper."""
     from local_hf import generate_local
 
     return generate_local(prompt)
 
 
 def run_demo(customer_id: str, config: MonteCarloConfig, providers: list[str]) -> dict:
+    """Run simulation once, then request narration from selected providers."""
     simulation = run_monte_carlo(customer_id, config)
     prompt = _build_prompt(simulation)
     narrations: dict[str, dict] = {}
@@ -170,12 +180,14 @@ def run_demo(customer_id: str, config: MonteCarloConfig, providers: list[str]) -
                 raise ValueError(f"Unsupported provider: {provider}")
             narrations[provider] = {"status": "ok", "output": output}
         except Exception as exc:
+            # Keep simulation output even if a provider is unavailable or misconfigured.
             narrations[provider] = {"status": "error", "error": str(exc)}
 
     return {"simulation": simulation, "narrations": narrations}
 
 
 def _parse_providers(value: str) -> list[str]:
+    """Parse and validate comma-separated providers from CLI input."""
     raw = [part.strip().lower() for part in value.split(",") if part.strip()]
     if not raw:
         return ["openai", "huggingface"]
@@ -187,6 +199,7 @@ def _parse_providers(value: str) -> list[str]:
 
 
 def main() -> None:
+    """CLI entrypoint."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--customer-id", default="C001")
     parser.add_argument("--trials", type=int, default=1000)
