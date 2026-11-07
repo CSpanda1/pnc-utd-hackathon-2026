@@ -170,6 +170,24 @@ Provider setup:
 - OpenAI: set `OPENAI_API_KEY` (and optional `OPENAI_MODEL`)
 - Hugging Face: ensure your local cached model setup works with `local_hf.py` / `HF_MODEL`
 
+## RAG with OpenAI embeddings demo
+
+Use `rag_embeddings_openai_demo.py` to demonstrate semantic retrieval with OpenAI embeddings plus grounded OpenAI answer generation.
+
+```bash
+# PowerShell:
+$env:OPENAI_API_KEY="sk-..."
+$env:OPENAI_MODEL="gpt-4o"
+$env:OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
+python rag_embeddings_openai_demo.py --customer-id C001 --top-k 4
+```
+
+Optional custom question:
+
+```bash
+python rag_embeddings_openai_demo.py --customer-id C001 --top-k 5 --question "Which signals suggest stress risk over the next year?"
+```
+
 ## Exploratory data analysis notebook
 
 Open [`PNC_Synthetic_Financial_Wellness_EDA.ipynb`](PNC_Synthetic_Financial_Wellness_EDA.ipynb) in JupyterLab for a comprehensive analysis of the synthetic profiles and accounts. Install `python -m pip install -r requirements-eda.txt` in the selected kernel environment, then run all cells. It requires no API key, model download, or GPU.
