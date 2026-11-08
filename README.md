@@ -15,3 +15,5 @@ python -m pytest
 
 **********************************************************
 To run the Streamlit app, the command is: python -m streamlit run smartmoney_app.py
+
+To login, for CUST-0001. Username is "demo" and password is "abc". For CUST-0002, username is "demo2" and password is "abc". For CUST-0003, username is "demo3" and password is "abc". For CUST-0004, username is "demo4" and password is "abc". For CUST-0005, username is "demo5" and password is "abc".
