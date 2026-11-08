@@ -11,3 +11,7 @@ python -m wellness.data_gen -n 5 -o customers.json
 python -m wellness.cli --level 3 "If I buy a \$30,000 car with \$5,000 down, will I have enough for emergencies?"
 python -m pytest
 ```
+
+
+**********************************************************
+To run the Streamlit app, the command is: python -m streamlit run smartmoney_app.py
